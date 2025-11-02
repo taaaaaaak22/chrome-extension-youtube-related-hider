@@ -1,6 +1,6 @@
 (() => {
   const TARGET_ID = 'related';
-  const MAX_WIDTH = 1000;
+  const MIN_WIDTH_TO_SHOW = 1000;
   let rafId = null;
   let observer = null;
 
@@ -40,7 +40,7 @@
       return;
     }
 
-    const shouldHide = window.innerWidth <= MAX_WIDTH;
+    const shouldHide = window.innerWidth < MIN_WIDTH_TO_SHOW;
     if (shouldHide) {
       storeOriginalDisplay(related);
       related.style.setProperty('display', 'none', 'important');
