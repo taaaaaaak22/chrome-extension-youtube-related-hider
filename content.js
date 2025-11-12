@@ -1,6 +1,6 @@
 (() => {
   const TARGET_ID = 'related';
-  const MIN_WIDTH_TO_SHOW = 1000;
+  const MAX_RELATED_WIDTH_TO_SHOW = 300;
   let rafId = null;
   let observer = null;
 
@@ -34,13 +34,42 @@
     }
   };
 
+  const getRelatedWidth = (element) => {
+    const inlineDisplay = element.style.getPropertyValue('display');
+    const inlinePriority = element.style.getPropertyPriority('display');
+    const hiddenByScript =
+      inlineDisplay === 'none' &&
+      inlinePriority === 'important' &&
+      'ytRelatedOriginalDisplay' in element.dataset;
+
+    if (!hiddenByScript) {
+      return element.getBoundingClientRect().width;
+    }
+
+    const originalDisplay = element.dataset.ytRelatedOriginalDisplay || '';
+    const originalPriority = element.dataset.ytRelatedOriginalPriority || '';
+
+    if (originalDisplay) {
+      element.style.setProperty('display', originalDisplay, originalPriority);
+    } else {
+      element.style.removeProperty('display');
+    }
+
+    const width = element.getBoundingClientRect().width;
+
+    element.style.setProperty('display', 'none', 'important');
+
+    return width;
+  };
+
   const toggleRelatedVisibility = () => {
     const related = document.getElementById(TARGET_ID);
     if (!related) {
       return;
     }
 
-    const shouldHide = window.innerWidth < MIN_WIDTH_TO_SHOW;
+    const relatedWidth = getRelatedWidth(related);
+    const shouldHide = relatedWidth >= MAX_RELATED_WIDTH_TO_SHOW;
     if (shouldHide) {
       storeOriginalDisplay(related);
       related.style.setProperty('display', 'none', 'important');
