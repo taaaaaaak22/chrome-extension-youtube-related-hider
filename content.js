@@ -1,6 +1,6 @@
 (() => {
   const TARGET_ID = 'related';
-  const MAX_RELATED_WIDTH_TO_SHOW = 300;
+  const MAX_RELATED_WIDTH_TO_SHOW = 420;
   let rafId = null;
   let observer = null;
 
