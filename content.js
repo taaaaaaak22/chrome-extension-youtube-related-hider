@@ -40,6 +40,20 @@
     }
   };
 
+  const getRenderableRect = (element) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return rect;
+    }
+
+    const child = Array.from(element.children).find((childEl) => {
+      const childRect = childEl.getBoundingClientRect();
+      return childRect.width > 0 && childRect.height > 0;
+    });
+
+    return child ? child.getBoundingClientRect() : rect;
+  };
+
   const getRelatedWidth = (element) => {
     const inlineDisplay = element.style.getPropertyValue('display');
     const inlinePriority = element.style.getPropertyPriority('display');
@@ -49,7 +63,7 @@
       'ytRelatedOriginalDisplay' in element.dataset;
 
     if (!hiddenByScript) {
-      return element.getBoundingClientRect().width;
+      return getRenderableRect(element).width;
     }
 
     const originalDisplay = element.dataset.ytRelatedOriginalDisplay || '';
@@ -61,7 +75,7 @@
       element.style.removeProperty('display');
     }
 
-    const width = element.getBoundingClientRect().width;
+    const width = getRenderableRect(element).width;
 
     element.style.setProperty('display', 'none', 'important');
 
@@ -99,25 +113,121 @@
     button.style.boxShadow = 'none';
   };
 
-  const ensureToggleWrapper = () => {
-    if (toggleWrapper && toggleWrapper.isConnected) {
-      return toggleWrapper;
+  const findRelatedElement = () => {
+    const candidates = Array.from(document.querySelectorAll(`#${TARGET_ID}`));
+    if (!candidates.length) {
+      return null;
     }
 
-    const related = document.getElementById(TARGET_ID);
-    if (!related || !related.parentElement) {
+    const scoredCandidates = candidates
+      .filter((el) => el.isConnected && !el.closest('#watch-page-skeleton'))
+      .map((el) => {
+        const rect = getRenderableRect(el);
+        const hasSize = rect.width > 0 && rect.height > 0;
+        const rendered = el.offsetParent !== null;
+        return {
+          el,
+          rect,
+          visible: hasSize || rendered,
+        };
+      });
+
+    const visibleCandidate = scoredCandidates
+      .filter((item) => item.visible)
+      .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height)[0];
+
+    if (visibleCandidate) {
+      return visibleCandidate.el;
+    }
+
+    return (
+      candidates.find((el) => el.isConnected && !el.closest('#watch-page-skeleton')) ||
+      candidates[0]
+    );
+  };
+
+  const isElementVisible = (element) => {
+    if (!element || !element.isConnected) {
+      return false;
+    }
+    const rect = getRenderableRect(element);
+    return (rect.width > 0 && rect.height > 0) || element.offsetParent !== null;
+  };
+
+  const getFirstVisibleHost = (selectors) => {
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (el && isElementVisible(el)) {
+        return el;
+      }
+    }
+    return null;
+  };
+
+  const getFirstExistingHost = (selectors) => {
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (el) {
+        return el;
+      }
+    }
+    return null;
+  };
+
+  const getWrapperHost = () => {
+    const related = findRelatedElement();
+    if (related && related.parentElement && isElementVisible(related)) {
+      return { host: related, position: 'before' };
+    }
+
+    const fallbackSelectors = ['#secondary-inner', '#secondary', '#primary-inner', '#primary'];
+    const visibleFallback = getFirstVisibleHost(fallbackSelectors);
+    if (visibleFallback) {
+      return { host: visibleFallback, position: 'prepend' };
+    }
+
+    const existingFallback = getFirstExistingHost(fallbackSelectors);
+    if (existingFallback) {
+      return { host: existingFallback, position: 'prepend' };
+    }
+
+    if (related && related.parentElement) {
+      return { host: related, position: 'before' };
+    }
+
+    return null;
+  };
+
+  const ensureToggleWrapper = () => {
+    const hostInfo = getWrapperHost();
+    if (!hostInfo) {
       return null;
     }
 
     let wrapper = document.getElementById(TOGGLE_WRAPPER_ID);
-    if (!wrapper) {
+    if (!wrapper || !wrapper.isConnected) {
       wrapper = document.createElement('div');
       wrapper.id = TOGGLE_WRAPPER_ID;
     }
 
     applyToggleWrapperStyles(wrapper);
 
-    related.insertAdjacentElement('beforebegin', wrapper);
+    if (hostInfo.position === 'before') {
+      const shouldMove =
+        wrapper.parentElement !== hostInfo.host.parentElement ||
+        wrapper.nextElementSibling !== hostInfo.host;
+      if (shouldMove) {
+        hostInfo.host.insertAdjacentElement('beforebegin', wrapper);
+      }
+    } else {
+      const shouldMove =
+        wrapper.parentElement !== hostInfo.host ||
+        wrapper !== hostInfo.host.firstElementChild;
+      if (shouldMove) {
+        hostInfo.host.insertAdjacentElement('afterbegin', wrapper);
+      }
+    }
+
     toggleWrapper = wrapper;
     return toggleWrapper;
   };
@@ -155,19 +265,24 @@
   };
 
   const updateToggleButtonState = (isRelatedVisible) => {
-    const related = document.getElementById(TARGET_ID);
-    if (!related) {
-      if (toggleWrapper) {
-        toggleWrapper.style.display = 'none';
-      }
-      return;
-    }
-
     const wrapper = ensureToggleWrapper();
     const button = ensureToggleButton();
     if (!wrapper || !button) {
       return;
     }
+
+    const related = findRelatedElement();
+    if (!related) {
+      wrapper.style.display = 'flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.justifyContent = 'center';
+      button.disabled = true;
+      button.textContent = 'Show related videos';
+      button.setAttribute('aria-pressed', 'false');
+      return;
+    }
+
+    button.disabled = false;
 
     const label = isRelatedVisible ? 'Hide related videos' : 'Show related videos';
     button.textContent = label;
@@ -179,7 +294,7 @@
   };
 
   const toggleRelatedVisibility = () => {
-    const related = document.getElementById(TARGET_ID);
+    const related = findRelatedElement();
     if (!related) {
       updateToggleButtonState(false);
       return;
@@ -238,9 +353,7 @@
     }
 
     observer = new MutationObserver(() => {
-      if (document.getElementById(TARGET_ID)) {
-        scheduleToggle();
-      }
+      scheduleToggle();
     });
 
     observer.observe(document.documentElement, {
