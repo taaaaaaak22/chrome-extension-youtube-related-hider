@@ -10,6 +10,8 @@
   let toggleWrapper = null;
   let toggleButton = null;
 
+  const isWatchPage = () => window.location.pathname === '/watch';
+
   const storeOriginalDisplay = (element) => {
     if ('ytRelatedOriginalDisplay' in element.dataset) {
       return;
@@ -199,6 +201,9 @@
   };
 
   const ensureToggleWrapper = () => {
+    if (!isWatchPage()) {
+      return null;
+    }
     const hostInfo = getWrapperHost();
     if (!hostInfo) {
       return null;
@@ -293,7 +298,20 @@
     wrapper.style.justifyContent = 'center';
   };
 
+  const cleanupToggleUi = () => {
+    if (toggleWrapper && toggleWrapper.isConnected) {
+      toggleWrapper.remove();
+    }
+    toggleWrapper = null;
+    toggleButton = null;
+  };
+
   const toggleRelatedVisibility = () => {
+    if (!isWatchPage()) {
+      cleanupToggleUi();
+      return;
+    }
+
     const related = findRelatedElement();
     if (!related) {
       updateToggleButtonState(false);
